@@ -3,20 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Chia Sẻ Vị Trí & Định Tuyến Google Maps</title>
+    <title>Hệ Thống Tracking Định Vị Real-time - Google Maps</title>
     
+    <!-- Leaflet Bản đồ -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <!-- Google Fonts & FontAwesome Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         :root {
-            --primary: #1a73e8; /* Màu xanh chuẩn Google */
-            --primary-hover: #1557b0;
-            --success: #34a853; /* Màu xanh lá chuẩn Google */
-            --bg-gradient: linear-gradient(135deg, #f0f4f9 0%, #d2e3fc 100%);
-            --glass-bg: rgba(255, 255, 255, 0.95);
+            --primary: #ea4335; /* Đổi màu đỏ chuẩn Google Maps Marker */
+            --primary-hover: #d93025;
+            --success: #34a853; 
+            --bg-gradient: linear-gradient(135deg, #e8eaed 0%, #f8f9fa 100%);
+            --glass-bg: rgba(255, 255, 255, 0.98);
             --text-main: #202124;
         }
 
@@ -40,7 +42,7 @@
         .app-container {
             background: var(--glass-bg);
             border-radius: 24px;
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
             width: 100%;
             max-width: 1200px;
             padding: 24px;
@@ -56,182 +58,91 @@
             }
         }
 
-        /* Panel điều khiển */
-        .control-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .brand h2 {
-            font-size: 24px;
-            font-weight: 700;
-            color: #1a73e8;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
+        .control-panel { display: flex; flex-direction: column; gap: 20px; }
+        .brand h2 { font-size: 24px; font-weight: 700; color: #1a73e8; display: flex; align-items: center; gap: 12px; }
+        
         .status-card {
             background: #ffffff;
             border: 1px solid #dadce0;
             padding: 16px;
             border-radius: 16px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .status-title {
-            font-weight: 700;
-            margin-bottom: 6px;
-            color: #5f6368;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.8px;
+        /* Hiệu ứng chớp nháy radar đang quét */
+        .radar-pulse {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 12px;
+            height: 12px;
+            background-color: #ea4335;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7);
+            animation: pulse 1.5s infinite;
+            display: none;
         }
 
-        #status-text {
-            font-size: 14px;
-            line-height: 1.5;
-            color: #3c4043;
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(234, 67, 53, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 67, 53, 0); }
         }
+
+        .status-title { font-weight: 700; margin-bottom: 6px; color: #5f6368; text-transform: uppercase; font-size: 11px; letter-spacing: 0.8px; }
+        #status-text { font-size: 14px; line-height: 1.5; color: #3c4043; }
 
         .btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 14px 20px;
-            font-size: 15px;
-            font-weight: 600;
-            border-radius: 12px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 2px 6px rgba(26, 115, 232, 0.2);
+            background: var(--primary); color: white; border: none; padding: 14px 20px;
+            font-size: 15px; font-weight: 600; border-radius: 12px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            transition: all 0.2s ease-in-out; box-shadow: 0 2px 6px rgba(234, 67, 53, 0.3);
         }
+        .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn-success { background: var(--success); box-shadow: 0 2px 6px rgba(52, 168, 83, 0.3); }
+        .btn-success:hover { background: #2b8b42; }
 
-        .btn:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
+        .share-box { display: none; background: #f8f9fa; padding: 16px; border-radius: 14px; border: 1px solid #dadce0; }
+        .input-group { display: flex; background: #fff; border: 1px solid #dadce0; border-radius: 10px; padding: 4px; margin-top: 8px; }
+        .input-group input { border: none; background: transparent; flex: 1; padding: 8px; font-size: 13px; outline: none; color: #3c4043; }
+        .btn-copy { background: #1a73e8; color: white; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
 
-        .btn-success {
-            background: var(--success);
-            box-shadow: 0 2px 6px rgba(52, 168, 83, 0.2);
-        }
-        
-        .btn-success:hover {
-            background: #2b8b42;
-        }
+        #map-container { position: relative; height: 600px; border-radius: 18px; overflow: hidden; border: 1px solid #dadce0; }
+        #map { height: 100%; width: 100%; }
 
-        .share-box {
-            display: none;
-            background: #f8f9fa;
-            padding: 16px;
-            border-radius: 14px;
-            border: 1px solid #dadce0;
-        }
+        .leaflet-control-layers { border-radius: 8px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; font-size: 13px !important; padding: 8px !important; border: none !important; }
+        .leaflet-routing-container { background: rgba(255, 255, 255, 0.98) !important; padding: 12px !important; border-radius: 12px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important; max-height: 220px !important; overflow-y: auto !important; font-size: 13px !important; border: 1px solid #dadce0 !important; }
 
-        .input-group {
-            display: flex;
-            background: #fff;
-            border: 1px solid #dadce0;
-            border-radius: 10px;
-            padding: 4px;
-            margin-top: 8px;
-        }
-
-        .input-group input {
-            border: none;
-            background: transparent;
-            flex: 1;
-            padding: 8px;
-            font-size: 13px;
-            outline: none;
-            color: #3c4043;
-        }
-
-        .btn-copy {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 6px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-        }
-
-        /* Khung bản đồ */
-        #map-container {
-            position: relative;
-            height: 600px;
-            border-radius: 18px;
-            overflow: hidden;
-            border: 1px solid #dadce0;
-        }
-
-        #map {
-            height: 100%;
-            width: 100%;
-        }
-
-        /* Menu tùy chọn chọn lớp bản đồ của Google */
-        .leaflet-control-layers {
-            border-radius: 8px !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
-            font-size: 13px !important;
-            padding: 8px !important;
-            border: none !important;
-        }
-
-        .leaflet-routing-container {
-            background: rgba(255, 255, 255, 0.98) !important;
-            padding: 12px !important;
-            border-radius: 12px !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
-            max-height: 220px !important;
-            overflow-y: auto !important;
-            font-size: 13px !important;
-            border: 1px solid #dadce0 !important;
-        }
-
-        footer {
-            margin-top: auto;
-            color: #5f6368;
-            font-size: 13px;
-            text-align: center;
-            padding: 10px;
-        }
-        footer strong {
-            color: #202124;
-        }
+        footer { margin-top: auto; color: #5f6368; font-size: 13px; text-align: center; padding: 10px; }
+        footer strong { color: #202124; }
     </style>
 </head>
 <body>
 
     <div class="app-container">
+        <!-- Panel điều khiển -->
         <div class="control-panel">
             <div class="brand">
-                <h2><i class="fa-solid fa-map-location-dot"></i> MFS GPS Share</h2>
+                <h2><i class="fa-solid fa-satellite-dish"></i> GPS Tracking Live</h2>
             </div>
 
             <div class="status-card">
-                <div class="status-title">Hệ thống</div>
-                <p id="status-text">Vui lòng kích hoạt định vị để nhận dữ liệu bản đồ chi tiết.</p>
+                <div class="radar-pulse" id="radar"></div>
+                <div class="status-title">Hệ thống Tracking</div>
+                <p id="status-text">Đang chờ kích hoạt tín hiệu vệ tinh...</p>
             </div>
 
-            <button class="btn" id="btn-get" onclick="getMyLocation()">
-                <i class="fa-solid fa-location-crosshairs"></i> Lấy vị trí của tôi
+            <button class="btn" id="btn-get" onclick="startLiveTracking()">
+                <i class="fa-solid fa-location-crosshairs"></i> Bật chia sẻ vị trí trực tiếp
             </button>
 
-            <button class="btn btn-success" id="btn-route" style="display: none;" onclick="startRoutingToSender()">
-                <i class="fa-solid fa-navigation"></i> Bắt đầu dẫn đường trực tuyến
+            <button class="btn btn-success" id="btn-route" style="display: none;" onclick="startLiveRouting()">
+                <i class="fa-solid fa-truck-fast"></i> Điều hướng thời gian thực
             </button>
 
             <div class="share-box" id="shareBox">
-                <div class="status-title">Sao chép liên kết điểm hẹn:</div>
+                <div class="status-title">Gửi link này cho bạn bè:</div>
                 <div class="input-group">
                     <input type="text" id="share-link" readonly>
                     <button class="btn-copy" onclick="copyLink()">Copy</button>
@@ -245,7 +156,7 @@
     </div>
 
     <footer>
-        Ứng dụng chia sẻ vị trí &copy; 2026. Phát triển bởi <strong>Minh Fansub PTL</strong>.
+        Bản quyền mã nguồn &copy; 2026. Phát triển độc quyền bởi <strong>Minh Fansub PTL</strong>.
     </footer>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -254,136 +165,148 @@
     <script>
         let map;
         let baseLayers;
-        let senderMarker;
+        let myMarker;
         let routeControl;
         
-        let senderLat = null;
-        let senderLng = null;
+        let targetLat = null;
+        let targetLng = null;
+        let trackingId = null; // ID theo dõi GPS liên tục
 
-        // Khởi tạo hệ thống bản đồ liên kết trực tiếp tới máy chủ Google Maps
+        // Icon Custom cho Real-time Marker
+        const liveIcon = L.divIcon({
+            className: 'live-marker',
+            html: '<div style="background-color: #1a73e8; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.5);"></div>',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        // Khởi tạo bản đồ Google
         function initSystemMap(lat = 21.0285, lng = 105.8542, zoom = 6) {
-            
-            // 1. Tầng Bản đồ giao thông/đường sá chuẩn của Google Maps
             const googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                maxZoom: 20,
-                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-                attribution: '© Google Maps'
+                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps'
             });
 
-            // 2. Tầng Địa hình Vệ tinh chân thật đầy đủ chi tiết chữ, số nhà của Google Maps (Hybrid)
             const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-                maxZoom: 20,
-                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-                attribution: '© Google Maps Vệ Tinh'
+                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Vệ Tinh'
             });
 
-            map = L.map('map', {
-                center: [lat, lng],
-                zoom: zoom,
-                layers: [googleHybrid], // Đặt mặc định mở lên là thấy ngay Địa hình vệ tinh siêu thực
-                zoomControl: false
-            });
-
+            map = L.map('map', { center: [lat, lng], zoom: zoom, layers: [googleHybrid], zoomControl: false });
             L.control.zoom({ position: 'topright' }).addTo(map);
 
-            // Menu chuyển đổi linh hoạt ở góc phải
-            baseLayers = {
-                "Google Vệ tinh thực tế": googleHybrid,
-                "Google Đường sá": googleStreets
-            };
+            baseLayers = { "Google Vệ tinh": googleHybrid, "Google Đường sá": googleStreets };
             L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
         }
 
-        // Thực hiện lấy tọa độ người gửi
-        function getMyLocation() {
+        // 1. NGƯỜI GỬI: Bật tính năng Tracking quét GPS liên tục
+        function startLiveTracking() {
             const status = document.getElementById('status-text');
+            const radar = document.getElementById('radar');
+            
             if (!navigator.geolocation) {
-                status.innerText = "Trình duyệt không hỗ trợ quét GPS.";
-                return;
+                status.innerText = "Trình duyệt không hỗ trợ GPS."; return;
             }
-            status.innerText = "Đang kết nối vệ tinh tìm vị trí của bạn...";
 
-            navigator.geolocation.getCurrentPosition((pos) => {
+            status.innerHTML = "<b>Đang khởi động radar quét thời gian thực...</b>";
+            radar.style.display = 'block';
+
+            // Dùng watchPosition thay vì getCurrentPosition để theo dõi chuyển động
+            trackingId = navigator.geolocation.watchPosition((pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
+                const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0; // Đổi m/s sang km/h
                 
-                status.innerHTML = `<b>Đã tìm thấy bạn!</b><br>Tọa độ chính xác: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                status.innerHTML = `<b>Đang phát tín hiệu Live!</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Tốc độ di chuyển: ${speed} km/h`;
                 
-                map.setView([lat, lng], 17);
-                if (senderMarker) map.removeLayer(senderMarker);
-                
-                senderMarker = L.marker([lat, lng]).addTo(map).bindPopup("Bạn đang ở đây!").openPopup();
+                // Cập nhật Marker di chuyển trên bản đồ
+                if (myMarker) {
+                    myMarker.setLatLng([lat, lng]);
+                } else {
+                    map.setView([lat, lng], 17);
+                    myMarker = L.marker([lat, lng], {icon: liveIcon}).addTo(map).bindPopup("Bạn đang di chuyển").openPopup();
+                }
 
-                // Tạo URL đính kèm dữ liệu định vị
+                // Cập nhật link mới nhất vào ô copy
                 const pureUrl = window.location.href.split('?')[0];
                 document.getElementById('share-link').value = `${pureUrl}?lat=${lat}&lng=${lng}`;
                 document.getElementById('shareBox').style.display = 'block';
-            }, () => {
-                status.innerText = "Vui lòng cho phép quyền truy cập vị trí trên thiết bị.";
-            }, { enableHighAccuracy: true });
+                document.getElementById('btn-get').innerHTML = '<i class="fa-solid fa-satellite"></i> Đang theo dõi...';
+
+            }, (err) => {
+                status.innerText = "Lỗi GPS: " + err.message;
+            }, { 
+                enableHighAccuracy: true, 
+                maximumAge: 0, 
+                timeout: 5000 
+            });
         }
 
-        // Tự vẽ tuyến đường từ người xem đến vị trí người gửi ngay trên bản đồ Google thu nhỏ này
-        function startRoutingToSender() {
+        // 2. NGƯỜI NHẬN: Điều hướng chạy theo thời gian thực (Cập nhật đường đi khi di chuyển)
+        function startLiveRouting() {
             const status = document.getElementById('status-text');
-            status.innerText = "Đang định vị vị trí của bạn để thiết lập đường đi...";
+            const radar = document.getElementById('radar');
+            radar.style.display = 'block';
 
-            navigator.geolocation.getCurrentPosition((pos) => {
+            status.innerHTML = "<b>Đang tải lộ trình... Bắt đầu di chuyển!</b>";
+
+            // Theo dõi vị trí người nhận liên tục
+            trackingId = navigator.geolocation.watchPosition((pos) => {
                 const receiverLat = pos.coords.latitude;
                 const receiverLng = pos.coords.longitude;
+                const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0;
 
-                status.innerHTML = `<b>Đang hiển thị lộ trình!</b><br>Đường kẻ nối từ vị trí hiện tại của bạn đến điểm hẹn.`;
+                status.innerHTML = `<b>Đang điều hướng Real-time!</b><br>Tốc độ của bạn: ${speed} km/h`;
 
-                if (routeControl) {
-                    map.removeControl(routeControl);
+                if (!routeControl) {
+                    // Lần đầu vẽ tuyến đường
+                    routeControl = L.Routing.control({
+                        waypoints: [
+                            L.latLng(receiverLat, receiverLng), // Điểm bắt đầu là vị trí LIVE của người nhận
+                            L.latLng(targetLat, targetLng)      // Điểm kết thúc là tọa độ người gửi
+                        ],
+                        lineOptions: { styles: [{ color: '#1a73e8', opacity: 0.9, weight: 6 }] },
+                        createMarker: function(i, wp, n) {
+                            if (i === 0) return L.marker(wp.latLng, {icon: liveIcon}).bindPopup("Vị trí của bạn");
+                            return L.marker(wp.latLng).bindPopup("Điểm hẹn của Minh Fansub PTL");
+                        },
+                        routeWhileDragging: false,
+                        language: 'vi',
+                        fitSelectedRoutes: true
+                    }).addTo(map);
+                } else {
+                    // Nếu đã có lộ trình, chỉ cập nhật lại tọa độ bắt đầu (để đường kẻ ngắn lại khi tới gần)
+                    routeControl.setWaypoints([
+                        L.latLng(receiverLat, receiverLng),
+                        L.latLng(targetLat, targetLng)
+                    ]);
                 }
 
-                // Thực thi bộ vẽ đường tự động bò theo làn giao thông thực tế
-                routeControl = L.Routing.control({
-                    waypoints: [
-                        L.latLng(receiverLat, receiverLng), 
-                        L.latLng(senderLat, senderLng)     
-                    ],
-                    lineOptions: {
-                        styles: [{ color: '#1a73e8', opacity: 0.8, weight: 6 }] /* Nét vẽ đường đi màu xanh lam đậm rất bắt mắt */
-                    },
-                    createMarker: function(i, waypoint, n) {
-                        if (i === 0) return L.marker(waypoint.latLng).bindPopup("Vị trí của bạn");
-                        return L.marker(waypoint.latLng).bindPopup("Đích đến (Bạn bè)").openPopup();
-                    },
-                    routeWhileDragging: false,
-                    language: 'vi'
-                }).addTo(map);
-
-            }, () => {
-                status.innerText = "Không thể tìm đường do bạn chưa cấp quyền định vị cho trình duyệt.";
-            }, { enableHighAccuracy: true });
+            }, (err) => {
+                status.innerText = "Mất tín hiệu GPS định tuyến.";
+            }, { enableHighAccuracy: true, maximumAge: 0 });
         }
 
         function copyLink() {
             const copyText = document.getElementById("share-link");
-            copyText.select();
-            document.execCommand("copy");
-            alert("Đã sao chép liên kết chia sẻ điểm hẹn thành công!");
+            copyText.select(); document.execCommand("copy");
+            alert("Đã copy liên kết. Gửi ngay cho bạn bè!");
         }
 
-        // Khởi chạy phân luồng logic đầu vào của trang web
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             const lat = parseFloat(urlParams.get('lat'));
             const lng = parseFloat(urlParams.get('lng'));
 
             if (!isNaN(lat) && !isNaN(lng)) {
-                senderLat = lat;
-                senderLng = lng;
+                targetLat = lat;
+                targetLng = lng;
 
                 document.getElementById('btn-get').style.display = 'none';
                 document.getElementById('btn-route').style.display = 'flex';
 
-                document.getElementById('status-text').innerHTML = `<b>Đã nhận điểm định vị được chia sẻ!</b><br>Mục tiêu: ${lat}, ${lng}. Hãy bấm nút xanh để vẽ đường đi trực tiếp trên bản đồ vệ tinh này.`;
+                document.getElementById('status-text').innerHTML = `<b>Xác nhận điểm hẹn từ bạn bè!</b><br>Bấm điều hướng để kích hoạt GPS chạy theo thời gian thực.`;
 
-                initSystemMap(senderLat, senderLng, 17);
-                senderMarker = L.marker([senderLat, senderLng]).addTo(map).bindPopup("<b>Vị trí người gửi!</b>").openPopup();
+                initSystemMap(targetLat, targetLng, 17);
+                L.marker([targetLat, targetLng]).addTo(map).bindPopup("<b>Đích đến!</b>").openPopup();
             } else {
                 initSystemMap();
             }
