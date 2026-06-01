@@ -112,7 +112,9 @@
         #map { height: 100%; width: 100%; }
 
         .leaflet-control-layers { border-radius: 8px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; font-size: 13px !important; padding: 8px !important; border: none !important; }
-        .leaflet-routing-container { background: rgba(255, 255, 255, 0.98) !important; padding: 12px !important; border-radius: 12px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important; max-height: 220px !important; overflow-y: auto !important; font-size: 13px !important; border: 1px solid #dadce0 !important; }
+        
+        /* ẨN BẢNG CHỮ ĐIỀU HƯỚNG ĐỂ GIỐNG GOOGLE MAPS CHỈ HIỆN ĐƯỜNG XANH */
+        .leaflet-routing-container { display: none !important; }
 
         footer { margin-top: auto; color: #5f6368; font-size: 13px; text-align: center; padding: 10px; }
         footer strong { color: #202124; }
@@ -256,6 +258,9 @@
 
                 status.innerHTML = `<b>Đang điều hướng Real-time!</b><br>Tốc độ của bạn: ${speed} km/h`;
 
+                // LIÊN TỤC KÉO CAMERA BẢN ĐỒ BÁM THEO VỊ TRÍ CỦA BẠN (Như Google Maps)
+                map.panTo([receiverLat, receiverLng]);
+
                 if (!routeControl) {
                     // Lần đầu vẽ tuyến đường
                     routeControl = L.Routing.control({
@@ -263,7 +268,13 @@
                             L.latLng(receiverLat, receiverLng), // Điểm bắt đầu là vị trí LIVE của người nhận
                             L.latLng(targetLat, targetLng)      // Điểm kết thúc là tọa độ người gửi
                         ],
-                        lineOptions: { styles: [{ color: '#1a73e8', opacity: 0.9, weight: 6 }] },
+                        show: false, // ẨN BẢNG CHỈ ĐƯỜNG
+                        lineOptions: { 
+                            styles: [
+                                { color: '#ffffff', opacity: 0.8, weight: 8 }, // Viền ngoài màu trắng
+                                { color: '#1a73e8', opacity: 1, weight: 5 }    // Lõi đường kẻ xanh lam
+                            ] 
+                        },
                         createMarker: function(i, wp, n) {
                             if (i === 0) return L.marker(wp.latLng, {icon: liveIcon}).bindPopup("Vị trí của bạn");
                             return L.marker(wp.latLng).bindPopup("Điểm hẹn của Minh Fansub PTL");
