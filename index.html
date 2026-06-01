@@ -14,7 +14,7 @@
 
     <style>
         :root {
-            --primary: #ea4335; /* Đổi màu đỏ chuẩn Google Maps Marker */
+            --primary: #ea4335;
             --primary-hover: #d93025;
             --success: #34a853; 
             --bg-gradient: linear-gradient(135deg, #e8eaed 0%, #f8f9fa 100%);
@@ -70,7 +70,6 @@
             overflow: hidden;
         }
 
-        /* Hiệu ứng chớp nháy radar đang quét */
         .radar-pulse {
             position: absolute;
             top: 16px;
@@ -113,8 +112,19 @@
 
         .leaflet-control-layers { border-radius: 8px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; font-size: 13px !important; padding: 8px !important; border: none !important; }
         
-        /* ẨN BẢNG CHỮ ĐIỀU HƯỚNG ĐỂ GIỐNG GOOGLE MAPS CHỈ HIỆN ĐƯỜNG XANH */
+        /* ẨN TOÀN BỘ BẢNG CHỮ ĐIỀU HƯỚNG */
         .leaflet-routing-container { display: none !important; }
+
+        /* Animation mượt cho icon mũi tên điều hướng */
+        .nav-arrow-wrapper {
+            transition: transform 0.3s ease-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 36px;
+            height: 36px;
+            filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.4));
+        }
 
         footer { margin-top: auto; color: #5f6368; font-size: 13px; text-align: center; padding: 10px; }
         footer strong { color: #202124; }
@@ -140,7 +150,7 @@
             </button>
 
             <button class="btn btn-success" id="btn-route" style="display: none;" onclick="startLiveRouting()">
-                <i class="fa-solid fa-truck-fast"></i> Điều hướng thời gian thực
+                <i class="fa-solid fa-location-arrow"></i> Bắt đầu đi (Điều hướng)
             </button>
 
             <div class="share-box" id="shareBox">
@@ -167,67 +177,89 @@
     <script>
         let map;
         let baseLayers;
-        let myMarker;
-        let routeControl;
+        let myMarker = null;
+        let targetMarker = null;
+        let routeControl = null;
         
         let targetLat = null;
         let targetLng = null;
-        let trackingId = null; // ID theo dõi GPS liên tục
+        let trackingId = null; 
 
-        // Icon Custom cho Real-time Marker
+        // Hàm tạo Icon mũi tên chỉ đường (3D Arrow chuẩn Google Map) xoay theo góc
+        function getNavArrowIcon(bearingDeg) {
+            return L.divIcon({
+                className: 'custom-nav-icon',
+                html: `
+                    <div class="nav-arrow-wrapper" style="transform: rotate(${bearingDeg}deg);">
+                        <svg viewBox="0 0 24 24" width="36" height="36">
+                            <path fill="#1a73e8" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" d="M12 2L2 22l10-4 10 4L12 2z"/>
+                        </svg>
+                    </div>
+                `,
+                iconSize: [36, 36],
+                iconAnchor: [18, 18]
+            });
+        }
+
+        // Icon Custom tĩnh lúc đứng yên
         const liveIcon = L.divIcon({
             className: 'live-marker',
-            html: '<div style="background-color: #1a73e8; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.5);"></div>',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
+            html: '<div style="background-color: #1a73e8; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.5);"></div>',
+            iconSize: [20, 20], iconAnchor: [10, 10]
         });
 
-        // Khởi tạo bản đồ Google
+        // Tính góc tọa độ (Bearing) từ vị trí người dùng hướng đến điểm đích
+        function getBearing(startLat, startLng, destLat, destLng) {
+            const toRad = Math.PI / 180;
+            const toDeg = 180 / Math.PI;
+            const dLng = (destLng - startLng) * toRad;
+            const lat1 = startLat * toRad;
+            const lat2 = destLat * toRad;
+            const y = Math.sin(dLng) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+            let bearing = Math.atan2(y, x) * toDeg;
+            return (bearing + 360) % 360;
+        }
+
+        // Khởi tạo bản đồ
         function initSystemMap(lat = 21.0285, lng = 105.8542, zoom = 6) {
             const googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps'
+                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
             });
-
-            const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Vệ Tinh'
+            const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y,m&x={x}&y={y}&z={z}', {
+                maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
             });
 
             map = L.map('map', { center: [lat, lng], zoom: zoom, layers: [googleHybrid], zoomControl: false });
             L.control.zoom({ position: 'topright' }).addTo(map);
 
-            baseLayers = { "Google Vệ tinh": googleHybrid, "Google Đường sá": googleStreets };
+            baseLayers = { "Bản đồ Vệ tinh": googleHybrid, "Bản đồ Đường sá": googleStreets };
             L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
         }
 
-        // 1. NGƯỜI GỬI: Bật tính năng Tracking quét GPS liên tục
+        // NGƯỜI GỬI: Chỉ lấy vị trí và bật link
         function startLiveTracking() {
             const status = document.getElementById('status-text');
             const radar = document.getElementById('radar');
             
-            if (!navigator.geolocation) {
-                status.innerText = "Trình duyệt không hỗ trợ GPS."; return;
-            }
+            if (!navigator.geolocation) return status.innerText = "Trình duyệt không hỗ trợ GPS.";
 
             status.innerHTML = "<b>Đang khởi động radar quét thời gian thực...</b>";
             radar.style.display = 'block';
 
-            // Dùng watchPosition thay vì getCurrentPosition để theo dõi chuyển động
             trackingId = navigator.geolocation.watchPosition((pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0; // Đổi m/s sang km/h
                 
-                status.innerHTML = `<b>Đang phát tín hiệu Live!</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Tốc độ di chuyển: ${speed} km/h`;
+                status.innerHTML = `<b>Đang phát tín hiệu Live!</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
                 
-                // Cập nhật Marker di chuyển trên bản đồ
                 if (myMarker) {
                     myMarker.setLatLng([lat, lng]);
                 } else {
-                    map.setView([lat, lng], 17);
-                    myMarker = L.marker([lat, lng], {icon: liveIcon}).addTo(map).bindPopup("Bạn đang di chuyển").openPopup();
+                    map.setView([lat, lng], 18);
+                    myMarker = L.marker([lat, lng], {icon: liveIcon}).addTo(map);
                 }
 
-                // Cập nhật link mới nhất vào ô copy
                 const pureUrl = window.location.href.split('?')[0];
                 document.getElementById('share-link').value = `${pureUrl}?lat=${lat}&lng=${lng}`;
                 document.getElementById('shareBox').style.display = 'block';
@@ -235,56 +267,62 @@
 
             }, (err) => {
                 status.innerText = "Lỗi GPS: " + err.message;
-            }, { 
-                enableHighAccuracy: true, 
-                maximumAge: 0, 
-                timeout: 5000 
-            });
+            }, { enableHighAccuracy: true, maximumAge: 0 });
         }
 
-        // 2. NGƯỜI NHẬN: Điều hướng chạy theo thời gian thực (Cập nhật đường đi khi di chuyển)
+        // NGƯỜI NHẬN: Điều hướng chạy theo (Có mũi tên xoay & Đường chỉ xanh)
         function startLiveRouting() {
             const status = document.getElementById('status-text');
-            const radar = document.getElementById('radar');
-            radar.style.display = 'block';
+            document.getElementById('radar').style.display = 'block';
 
-            status.innerHTML = "<b>Đang tải lộ trình... Bắt đầu di chuyển!</b>";
+            status.innerHTML = "<b>Bắt đầu điều hướng... Hãy di chuyển!</b>";
 
-            // Theo dõi vị trí người nhận liên tục
             trackingId = navigator.geolocation.watchPosition((pos) => {
                 const receiverLat = pos.coords.latitude;
                 const receiverLng = pos.coords.longitude;
                 const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0;
+                
+                // Tính toán góc xoay (Bearing) mũi tên chỉ tới mục tiêu
+                const bearing = getBearing(receiverLat, receiverLng, targetLat, targetLng);
 
-                status.innerHTML = `<b>Đang điều hướng Real-time!</b><br>Tốc độ của bạn: ${speed} km/h`;
-
-                // LIÊN TỤC KÉO CAMERA BẢN ĐỒ BÁM THEO VỊ TRÍ CỦA BẠN (Như Google Maps)
+                status.innerHTML = `<b>Đang điều hướng!</b><br>Tốc độ: ${speed} km/h - Đang tiến tới mục tiêu.`;
                 map.panTo([receiverLat, receiverLng]);
 
-                if (!routeControl) {
-                    // Lần đầu vẽ tuyến đường
-                    routeControl = L.Routing.control({
-                        waypoints: [
-                            L.latLng(receiverLat, receiverLng), // Điểm bắt đầu là vị trí LIVE của người nhận
-                            L.latLng(targetLat, targetLng)      // Điểm kết thúc là tọa độ người gửi
-                        ],
-                        show: false, // ẨN BẢNG CHỈ ĐƯỜNG
-                        lineOptions: { 
-                            styles: [
-                                { color: '#ffffff', opacity: 0.8, weight: 8 }, // Viền ngoài màu trắng
-                                { color: '#1a73e8', opacity: 1, weight: 5 }    // Lõi đường kẻ xanh lam
-                            ] 
-                        },
-                        createMarker: function(i, wp, n) {
-                            if (i === 0) return L.marker(wp.latLng, {icon: liveIcon}).bindPopup("Vị trí của bạn");
-                            return L.marker(wp.latLng).bindPopup("Điểm hẹn của Minh Fansub PTL");
-                        },
-                        routeWhileDragging: false,
-                        language: 'vi',
-                        fitSelectedRoutes: true
+                // Xử lý tách biệt Marker để tránh lỗi giật nháy của Leaflet Routing
+                if (!myMarker) {
+                    // Lần đầu tạo mũi tên xoay
+                    myMarker = L.marker([receiverLat, receiverLng], {
+                        icon: getNavArrowIcon(bearing), 
+                        zIndexOffset: 1000 // Mũi tên luôn nổi lên trên cùng
                     }).addTo(map);
                 } else {
-                    // Nếu đã có lộ trình, chỉ cập nhật lại tọa độ bắt đầu (để đường kẻ ngắn lại khi tới gần)
+                    // Khi di chuyển: Cập nhật vị trí & Góc xoay mũi tên
+                    myMarker.setLatLng([receiverLat, receiverLng]);
+                    myMarker.setIcon(getNavArrowIcon(bearing));
+                }
+
+                // Vẽ ĐƯỜNG CHỈ XANH Y SÌ GOOGLE MAP
+                if (!routeControl) {
+                    routeControl = L.Routing.control({
+                        waypoints: [
+                            L.latLng(receiverLat, receiverLng),
+                            L.latLng(targetLat, targetLng)
+                        ],
+                        show: false, // Ẩn bảng chữ
+                        addWaypoints: false, // Chống lỗi người dùng click bấm thêm điểm
+                        routeWhileDragging: false,
+                        fitSelectedRoutes: true,
+                        lineOptions: { 
+                            styles: [
+                                { color: '#ffffff', opacity: 1, weight: 8 },  // Viền trắng
+                                { color: '#1a73e8', opacity: 1, weight: 5 }   // Lõi xanh lam
+                            ] 
+                        },
+                        // TRICKS LỖI CHỐNG GIẬT: Vô hiệu hóa marker mặc định của routing machine
+                        createMarker: function() { return null; }
+                    }).addTo(map);
+                } else {
+                    // Update lại đường đi để đường ngắn lại
                     routeControl.setWaypoints([
                         L.latLng(receiverLat, receiverLng),
                         L.latLng(targetLat, targetLng)
@@ -292,7 +330,7 @@
                 }
 
             }, (err) => {
-                status.innerText = "Mất tín hiệu GPS định tuyến.";
+                status.innerText = "Mất tín hiệu GPS.";
             }, { enableHighAccuracy: true, maximumAge: 0 });
         }
 
@@ -308,16 +346,16 @@
             const lng = parseFloat(urlParams.get('lng'));
 
             if (!isNaN(lat) && !isNaN(lng)) {
-                targetLat = lat;
-                targetLng = lng;
+                targetLat = lat; targetLng = lng;
 
                 document.getElementById('btn-get').style.display = 'none';
                 document.getElementById('btn-route').style.display = 'flex';
-
-                document.getElementById('status-text').innerHTML = `<b>Xác nhận điểm hẹn từ bạn bè!</b><br>Bấm điều hướng để kích hoạt GPS chạy theo thời gian thực.`;
+                document.getElementById('status-text').innerHTML = `<b>Xác nhận điểm hẹn từ bạn bè!</b><br>Bấm "Bắt đầu đi" để điều hướng.`;
 
                 initSystemMap(targetLat, targetLng, 17);
-                L.marker([targetLat, targetLng]).addTo(map).bindPopup("<b>Đích đến!</b>").openPopup();
+                
+                // Cắm cờ đỏ ở điểm đích
+                targetMarker = L.marker([targetLat, targetLng]).addTo(map).bindPopup("<b>Bạn của bạn ở đây!</b>").openPopup();
             } else {
                 initSystemMap();
             }
